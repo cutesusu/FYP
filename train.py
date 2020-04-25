@@ -8,10 +8,11 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import utils
 
-def loss_batch(model, loss_func, x, y, opt=None):
+def loss_batch(model, loss_func, x, y, flag, opt=None):
     loss = loss_func(model(x), y)
-
-    if opt is not None:
+    # retrain
+    if flag == 1:
+      if opt is not None:
         loss.backward()
 
         # zero-out all the gradients corresponding to the pruned connections
@@ -24,6 +25,11 @@ def loss_batch(model, loss_func, x, y, opt=None):
             device = torch.device('cuda')
             p.grad.data = torch.from_numpy(grad_tensor).to(device)   
 
+        opt.step()
+        opt.zero_grad()
+    else:
+      if opt is not None:
+        loss.backward()
         opt.step()
         opt.zero_grad()
 
@@ -39,14 +45,14 @@ def valid_batch(model, loss_func, x, y):
     return loss.item(), torch.sum(correct).item(), len(x)
 
 
-def fit(epochs, model, loss_func, opt, train_dl, valid_dl, patience, checkpoint):
+def fit(epochs, model, loss_func, opt, train_dl, valid_dl, patience, checkpoint, flag):
     wait = 0
     valid_loss_min = np.Inf
     for epoch in range(epochs):
         # Train model
         model.train()
         losses, nums = zip(
-            *[loss_batch(model, loss_func, x, y, opt) for x, y in tqdm(train_dl, desc=f"[Epoch {epoch+1}/{epochs}]")])
+            *[loss_batch(model, loss_func, x, y, flag, opt) for x, y in tqdm(train_dl, desc=f"[Epoch {epoch+1}/{epochs}]")])
         train_loss = np.sum(np.multiply(losses, nums)) / np.sum(nums)
         # Validation model
         model.eval()
@@ -87,7 +93,7 @@ if __name__ == "__main__":
                         help='Input batch size for training (default: 64)')
     parser.add_argument('--num-workers', type=int, default=0, metavar='W',
                         help='How many subprocesses to use for data loading (default: 0)')
-    parser.add_argument('--epochs', type=int, default=20, metavar='N',
+    parser.add_argument('--epochs', type=int, default=100, metavar='N',
                         help='Number of epochs to train (default: 20)')
     parser.add_argument('--patience', type=int, default=10, metavar='P',
                         help='Number of epochs with no improvement after which training will be stopped (default: 10)')
@@ -95,7 +101,7 @@ if __name__ == "__main__":
                         help='Learning rate (default: 0.0001)')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='Random seed (default: 1)')
-    parser.add_argument('--checkpoint', type=str, default='initial.ptmodel', metavar='M',
+    parser.add_argument('--checkpoint', type=str, default='initial_10.ptmodel', metavar='M',
                         help='checkpoint file name (default: model.pt)')
     args = parser.parse_args()
 
@@ -114,6 +120,6 @@ if __name__ == "__main__":
 
     # Training and Validation
     fit(args.epochs, model, criterion, optimizer,
-        train_loader, valid_loader, args.patience, args.checkpoint)
+        train_loader, valid_loader, args.patience, args.checkpoint, flag = 0)
    
     
