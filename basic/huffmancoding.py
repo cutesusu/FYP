@@ -75,6 +75,8 @@ def huffman_decode(directory, prefix, dtype):
 
     # Read the codebook
     codebook_encoding = load(directory/f'{prefix}_codebook.bin')
+    print('codebook')
+    print(directory/f'{prefix}_codebook.bin')
     root = decode_huffman_tree(codebook_encoding, dtype)
 
     # Read the data
@@ -259,6 +261,8 @@ def huffman_encode_model(model, directory='encodings/'):
 
 def huffman_decode_model(model, directory='encodings/'):
     for name, param in model.named_parameters():
+      print("================now huffman layers:=========")
+      print(name)
       if 'fc1' in name or 'fc2' in name or 'stn.fc_loc.0' in name:
         if 'mask' in name:
             continue
@@ -281,11 +285,17 @@ def huffman_decode_model(model, directory='encodings/'):
             param.data = torch.from_numpy(mat.toarray()).to(dev)
         else:
             dev = param.device
-            bias = np.load(directory+'/'+name)
+            print("bias name:")
+            print(directory + '/' + name)
+            bias = np.load(directory + '/' + name)
             param.data = torch.from_numpy(bias).to(dev)
 
       else:
+          if 'mask' in name:
+              continue
           dev = param.device
+          print("bias and weight name:")
+          print(directory + '/' + name)
           weight_bias = np.load(directory + '/' + name)
           param.data = torch.from_numpy(weight_bias).to(dev)
 
