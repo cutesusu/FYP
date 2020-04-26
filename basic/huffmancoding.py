@@ -11,6 +11,7 @@ from scipy.sparse import csr_matrix, csc_matrix
 Node = namedtuple('Node', 'freq value left right')
 Node.__lt__ = lambda x, y: x.freq < y.freq
 
+
 def huffman_encode(arr, prefix, save_dir='./'):
     """
     Encodes numpy array 'arr' and saves to `save_dir`
@@ -32,7 +33,7 @@ def huffman_encode(arr, prefix, save_dir='./'):
     heapify(heap)
 
     # Merge nodes
-    while(len(heap) > 1):
+    while (len(heap) > 1):
         node1 = heappop(heap)
         node2 = heappop(heap)
         merged = Node(node1.freq + node2.freq, None, node1, node2)
@@ -75,8 +76,6 @@ def huffman_decode(directory, prefix, dtype):
 
     # Read the codebook
     codebook_encoding = load(directory/f'{prefix}_codebook.bin')
-    print('codebook')
-    print(directory/f'{prefix}_codebook.bin')
     root = decode_huffman_tree(codebook_encoding, dtype)
 
     # Read the data
@@ -102,6 +101,7 @@ def encode_huffman_tree(root, dtype):
     """
     converter = {'float32':float2bitstr, 'int32':int2bitstr}
     code_list = []
+
     def encode_node(node):
         if node.value is not None: # node is leaf node
             code_list.append('1')
@@ -121,6 +121,7 @@ def decode_huffman_tree(code_str, dtype):
     """
     converter = {'float32':bitstr2float, 'int32':bitstr2int}
     idx = 0
+
     def decode_node():
         nonlocal idx
         info = code_str[idx]
@@ -135,7 +136,6 @@ def decode_huffman_tree(code_str, dtype):
             return Node(0, None, left, right)
 
     return decode_node()
-
 
 
 # My own dump / load logics
@@ -181,13 +181,16 @@ def float2bitstr(f):
     four_bytes = struct.pack('>f', f) # bytes
     return ''.join(f'{byte:08b}' for byte in four_bytes) # string of '0's and '1's
 
+
 def bitstr2float(bitstr):
     byte_arr = bytearray(int(bitstr[i:i+8], 2) for i in range(0, len(bitstr), 8))
     return struct.unpack('>f', byte_arr)[0]
 
+
 def int2bitstr(integer):
     four_bytes = struct.pack('>I', integer) # bytes
     return ''.join(f'{byte:08b}' for byte in four_bytes) # string of '0's and '1's
+
 
 def bitstr2int(bitstr):
     byte_arr = bytearray(int(bitstr[i:i+8], 2) for i in range(0, len(bitstr), 8))
@@ -197,6 +200,7 @@ def bitstr2int(bitstr):
 # Functions for calculating / reconstructing index diff
 def calc_index_diff(indptr):
     return indptr[1:] - indptr[:-1]
+
 
 def reconstruct_indptr(diff):
     return np.concatenate([[0], np.cumsum(diff)])
@@ -210,14 +214,11 @@ def huffman_encode_model(model, directory='encodings/'):
     print(f"{'Layer':<15} | {'original':>10} {'compressed':>10} {'improvement':>11} {'percent':>7}")
     print('-'*70)
     for name, param in model.named_parameters():
-      print("====now huffman layer=======")
-      print(name)
-      # only encode fc layer!!! for conv layer, just dump it!
-      # now is fc layer in stn and other
-      if 'fc1' in name or 'fc2' in name or 'stn.fc_loc.0' in name :         
+        print(name)
+        # continue
         if 'mask' in name:
             continue
-        if 'weight' in name:
+        if 'weight' in name and 'conv' not in name and 'stn.loc_net' not in name and 'fc_bn' not in name:
             weight = param.data.cpu().numpy()
             shape = weight.shape
             form = 'csr' if shape[0] < shape[1] else 'csc'
@@ -244,29 +245,18 @@ def huffman_encode_model(model, directory='encodings/'):
 
             print(f"{name:<15} | {original:10} {compressed:10} {original / compressed:>10.2f}x {100 * compressed / original:>6.2f}%")
         original_total += original
-        compressed_total += compressed      
-    
-      # now is conv layer and BatchNom layer and stn.fc_loc.2(all zeros, after csc/csr, the mat.data is empty!!!!)
-      else:      
-          if 'mask' in name:
-              continue
-          weight_bias = param.data.cpu().numpy()
-          weight_bias.dump(f'{directory}/{name}')
+        compressed_total += compressed
 
     print('-'*70)
-    print("original total: %d" %(original_total))
-    print("compressed_total: %d" %(compressed_total))
     print(f"{'total':15} | {original_total:>10} {compressed_total:>10} {original_total / compressed_total:>10.2f}x {100 * compressed_total / original_total:>6.2f}%")
 
 
 def huffman_decode_model(model, directory='encodings/'):
     for name, param in model.named_parameters():
-      print("================now huffman layers:=========")
-      print(name)
-      if 'fc1' in name or 'fc2' in name or 'stn.fc_loc.0' in name:
         if 'mask' in name:
             continue
-        if 'weight' in name:
+        print(name)
+        if 'weight' in name and 'conv' not in name and 'stn.loc_net' not in name and 'fc_bn' not in name:
             dev = param.device
             weight = param.data.cpu().numpy()
             shape = weight.shape
@@ -285,17 +275,6 @@ def huffman_decode_model(model, directory='encodings/'):
             param.data = torch.from_numpy(mat.toarray()).to(dev)
         else:
             dev = param.device
-            print("bias name:")
-            print(directory + '/' + name)
-            bias = np.load(directory + '/' + name)
+            bias = np.load(directory+'/'+name, allow_pickle=True)
             param.data = torch.from_numpy(bias).to(dev)
-
-      else:
-          if 'mask' in name:
-              continue
-          dev = param.device
-          print("bias and weight name:")
-          print(directory + '/' + name)
-          weight_bias = np.load(directory + '/' + name)
-          param.data = torch.from_numpy(weight_bias).to(dev)
-
+           
